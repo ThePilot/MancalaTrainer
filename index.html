@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mancala Trainer</title>
+<meta name="description" content="Learn to play mancala well: play against a coach that grades every move, solve tactics puzzles, and work through short strategy lessons.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238a5a2b'/%3E%3Ccircle cx='11' cy='12' r='5' fill='%23e9c46a'/%3E%3Ccircle cx='21' cy='12' r='5' fill='%232a9d8f'/%3E%3Ccircle cx='16' cy='21' r='5' fill='%23e76f51'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true"></span>Mancala Trainer</div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="play" aria-selected="true">Play</button>
+    <button class="tab" role="tab" data-tab="puzzles" aria-selected="false">Puzzles</button>
+    <button class="tab" role="tab" data-tab="learn" aria-selected="false">Learn</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ PLAY ============ -->
+  <section id="tab-play" class="panel">
+    <div class="toolbar">
+      <label>Opponent
+        <select id="level">
+          <option value="0">Beginner</option>
+          <option value="1" selected>Casual</option>
+          <option value="2">Tough</option>
+          <option value="3">Expert</option>
+        </select>
+      </label>
+      <label>First move
+        <select id="first">
+          <option value="0">You</option>
+          <option value="1">Computer</option>
+        </select>
+      </label>
+      <button id="new-game" class="btn primary">New game</button>
+      <span class="spacer"></span>
+      <button id="undo" class="btn">Undo</button>
+      <button id="hint" class="btn">Hint</button>
+      <label class="check"><input type="checkbox" id="xray"> Show move values</label>
+    </div>
+
+    <div class="status" id="play-status" aria-live="polite"></div>
+    <div id="play-board"></div>
+
+    <div class="evalbar" id="evalbar" title="The engine's estimate of the final margin">
+      <div class="evalbar-track"><div class="evalbar-fill" id="evalbar-fill"></div><div class="evalbar-mid"></div></div>
+      <div class="evalbar-label" id="evalbar-label">Even game</div>
+    </div>
+
+    <div class="below">
+      <div class="card coach">
+        <h2>Coach</h2>
+        <div id="coach" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h2>Moves</h2>
+        <div id="movelog" class="movelog"></div>
+        <div id="record" class="record"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PUZZLES ============ -->
+  <section id="tab-puzzles" class="panel" hidden>
+    <div class="status" id="puzzle-status" aria-live="polite"></div>
+    <div id="puzzle-board"></div>
+    <div class="toolbar center">
+      <button id="puzzle-prev" class="btn">← Previous</button>
+      <button id="puzzle-hint" class="btn">Hint</button>
+      <button id="puzzle-show" class="btn">Show answer</button>
+      <button id="puzzle-next" class="btn primary">Next →</button>
+    </div>
+    <div class="card">
+      <div id="puzzle-msg" class="msg" aria-live="polite"></div>
+    </div>
+    <div class="card">
+      <h2>All puzzles <span id="puzzle-progress" class="muted"></span></h2>
+      <div id="puzzle-grid" class="grid"></div>
+    </div>
+  </section>
+
+  <!-- ============ LEARN ============ -->
+  <section id="tab-learn" class="panel" hidden>
+    <div class="lesson-nav" id="lesson-nav"></div>
+    <div class="card lesson">
+      <h2 id="lesson-title"></h2>
+      <div id="lesson-body"></div>
+    </div>
+    <div class="status" id="lesson-status" aria-live="polite"></div>
+    <div id="lesson-board"></div>
+    <div class="card">
+      <div id="lesson-msg" class="msg" aria-live="polite"></div>
+      <div class="toolbar center">
+        <button id="lesson-reset" class="btn">Reset</button>
+        <button id="lesson-next" class="btn primary">Next lesson →</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Your every-turn checklist</h2>
+      <ol class="checklist">
+        <li><b>Free turn?</b> Any pit whose stones equal its distance to your store. Rightmost first.</li>
+        <li><b>Capture?</b> Any move ending in one of your empty pits with stones across from it.</li>
+        <li><b>Their capture?</b> Their empty pits, and whether they can reach one. Move, fill or disrupt.</li>
+        <li><b>Their free turn?</b> A stone dropped into the right pit spoils their count.</li>
+        <li><b>Nothing forcing?</b> Prefer moves that keep stones on your side and set up next turn’s free move.</li>
+      </ol>
+      <p class="muted">Rules used here: Kalah, 6 pits × 4 stones, free turn on landing in your store, capture on landing in your own empty pit when the opposite pit has stones, remaining stones go to the side they sit on when the game ends.</p>
+    </div>
+  </section>
+</main>
+
+<footer>Runs entirely in your browser. Progress is saved on this device.</footer>
+
+<script src="js/engine.js"></script>
+<script src="js/lessons.js"></script>
+<script src="js/puzzles.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
