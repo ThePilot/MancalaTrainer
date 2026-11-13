@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mancala Trainer</title>
 <meta name="description" content="Learn to play mancala well: play against a coach that grades every move, solve tactics puzzles, and work through short strategy lessons.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238a5a2b'/%3E%3Ccircle cx='11' cy='12' r='5' fill='%23e9c46a'/%3E%3Ccircle cx='21' cy='12' r='5' fill='%232a9d8f'/%3E%3Ccircle cx='16' cy='21' r='5' fill='%23e76f51'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238a5a2b'/%3E%3Ccircle cx='11' cy='12' r='5' fill='%23ffc800'/%3E%3Ccircle cx='21' cy='12' r='5' fill='%2328dc46'/%3E%3Ccircle cx='16' cy='21' r='5' fill='%23ff1e3c'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -15,6 +15,7 @@
     <button class="tab" role="tab" data-tab="play" aria-selected="true">Play</button>
     <button class="tab" role="tab" data-tab="puzzles" aria-selected="false">Puzzles</button>
     <button class="tab" role="tab" data-tab="learn" aria-selected="false">Learn</button>
+    <button class="tab" role="tab" data-tab="think" aria-selected="false">Think</button>
   </nav>
 </header>
 
@@ -109,6 +110,71 @@
         <li><b>Nothing forcing?</b> Prefer moves that keep stones on your side and set up next turn’s free move.</li>
       </ol>
       <p class="muted">Rules used here: Kalah, 6 pits × 4 stones, free turn on landing in your store, capture on landing in your own empty pit when the opposite pit has stones, remaining stones go to the side they sit on when the game ends.</p>
+    </div>
+  </section>
+  <!-- ============ THINK ============ -->
+  <section id="tab-think" class="panel" hidden>
+    <div class="card lesson">
+      <h2>How to think: the four-question scan</h2>
+      <p>Strong players don’t see more than you do. They look in the same order every turn, so nothing gets missed. Ask these four questions, in this order, before every move:</p>
+      <ol class="checklist">
+        <li><b>Do I have a free turn?</b> A pit whose stone count equals its distance to your store. Pit 6 is 1 step away, pit 5 is 2 … pit 1 is 6. Take the one nearest the store first, then <i>scan again</i>: the board has changed.</li>
+        <li><b>Do I have a capture?</b> Find your empty pits. For each one that has stones above it, ask which of your pits ends exactly there.</li>
+        <li><b>What can they capture?</b> Same check from their seat: their empty pits, your stones underneath, and whether any of their pits ends there. If so: move the pile, fill their empty pit, or drop a stone into the attacking pit so it overshoots.</li>
+        <li><b>What free turns am I leaving them?</b> Their pit A is 1 step from their store, B is 2 … F is 6. A stone sown into a loaded pit spoils its count.</li>
+      </ol>
+      <p>Only when all four come up empty do you choose on general grounds, and then the question is simply: <b>which move leaves them the least?</b></p>
+    </div>
+
+    <div class="card">
+      <h2>Scan drill <span id="scan-streak" class="muted"></span></h2>
+      <p class="muted">This trains the looking, not the choosing. Fresh random position every time.</p>
+    </div>
+    <div class="status" id="scan-status" aria-live="polite"></div>
+    <div id="scan-board"></div>
+    <div class="toolbar center">
+      <button id="scan-check" class="btn primary">Check</button>
+      <button id="scan-next" class="btn">New position →</button>
+    </div>
+    <div class="card"><div id="scan-msg" class="msg" aria-live="polite"></div></div>
+
+    <div class="card lesson">
+      <h2>Counting without counting</h2>
+      <ul class="checklist">
+        <li><b>Stones = distance</b> lands in your store. One more than that lands in their pit F, two more in E, and so on down to A.</li>
+        <li><b>Distance + 7 or more</b> comes back to your own side (their store is skipped): distance + 7 lands in your pit 1, + 8 in pit 2…</li>
+        <li><b>Exactly 13 stones</b> goes all the way round and lands in the pit it started from, which is now empty. That is a capture nearly every time.</li>
+        <li><b>Opposites:</b> 1 faces A, 2 faces B … 6 faces F. A capture takes whatever is straight across.</li>
+      </ul>
+    </div>
+
+    <div class="card lesson">
+      <h2>What matters in each phase</h2>
+      <h3>Opening <span class="muted">(most stones still in the pits)</span></h3>
+      <ul class="checklist">
+        <li><b>Tempo first.</b> Every free turn is a point and another look at the board. Captures are still small, so free turns are worth more.</li>
+        <li><b>Empty pit 6 early.</b> Once it is empty, any single stone that arrives there is a free turn waiting to be fired again.</li>
+        <li><b>Mind what you feed them.</b> A sow that goes round the corner changes their counts. Check whether you are handing them an exact free turn, or spoiling one.</li>
+      </ul>
+      <h3>Middlegame <span class="muted">(piles and holes everywhere)</span></h3>
+      <ul class="checklist">
+        <li><b>Keep two lists.</b> Your empty pits are weapons. Your big piles are targets. Update both every turn.</li>
+        <li><b>A pile under one of their empty pits is in danger</b> the moment any of their pits can end there. Don’t wait for it to happen.</li>
+        <li><b>Big piles wrap around.</b> Eight or more stones in a left-hand pit usually reach your own side again; work out where they stop.</li>
+        <li><b>Don’t just grab.</b> Before a capture, look at what the reply is. Two stones now for six stones next turn is a bad trade.</li>
+      </ul>
+      <h3>Endgame <span class="muted">(a dozen or so stones left)</span></h3>
+      <ul class="checklist">
+        <li><b>Count totals, not stores.</b> Your store plus the stones on your side, against theirs. 25 wins.</li>
+        <li><b>When one side empties, the other keeps what is left at home.</b> If you hold more stones on your side, keep them there with small moves and let them run out.</li>
+        <li><b>If they hold more,</b> emptying your own side fast only helps when your store is already further ahead than what they have left. Otherwise go after their pile.</li>
+      </ul>
+    </div>
+
+    <div class="card lesson">
+      <h2>What the numbers mean</h2>
+      <p>When the coach says a move costs “about 4 stones”, it means: the engine looked many moves ahead, assumed both sides keep playing their best, and expects the final score to be about 4 stones worse for you than after the best move. It is a forecast from look-ahead, not an average of random games, and it is exact once few enough stones remain for the engine to see the end.</p>
+      <p>You are not expected to calculate that. The number tells you <i>how much</i> a move mattered; the scan above is <i>how you find it</i>.</p>
     </div>
   </section>
 </main>

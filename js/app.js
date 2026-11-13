@@ -15,7 +15,7 @@
 
   /* ---------- saved progress ---------- */
   var KEY = 'mancala-trainer-v1';
-  var saved = { games: {}, puzzles: {}, lessons: {}, level: 1, first: 0 };
+  var saved = { games: {}, puzzles: {}, lessons: {}, level: 1, first: 0, scan: { streak: 0, best: 0 } };
   try {
     var raw = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (raw && typeof raw === 'object') for (var k in saved) if (raw[k] != null) saved[k] = raw[k];
@@ -112,7 +112,7 @@
     cell.querySelector('.count').textContent = n;
   };
 
-  /* o: { clickable:[idx], hint:idx, pulse:idx, cap:[idx], vals:{idx:{text,cls}}, last:idx } */
+  /* o: { clickable:[idx], hint:idx, pulse:idx, cap:[idx], vals:{idx:{text,cls}}, last:idx, marks:{idx:'sel'|'right'|'wrong'|'missed'} } */
   BoardView.prototype.render = function (b, o) {
     o = o || {};
     for (var i = 0; i < 14; i++) {
@@ -120,6 +120,7 @@
       var cell = this.cells[i];
       cell.classList.toggle('pulse', o.pulse === i);
       cell.classList.toggle('cap', !!o.cap && o.cap.indexOf(i) >= 0);
+      cell.dataset.mark = (o.marks && o.marks[i]) || '';
       if (i === 6 || i === 13) continue;
       var can = !!o.clickable && o.clickable.indexOf(i) >= 0;
       var btn = cell.querySelector('.pit');
@@ -237,6 +238,105 @@
     return 'No immediate tactics. Look for the move that doesn’t hand over a free turn or a capture.';
   }
 
+  /* ---------- reading a position: the scan a strong player runs every turn ---------- */
+  function dist(i) { return i < 6 ? 6 - i : 13 - i; }
+  function where(i) { return i === 6 ? 'your store' : i === 13 ? 'their store' : i < 6 ? 'your pit ' + pitName(i) : 'their pit ' + pitName(i); }
+  function scan(b) {
+    var s = { myFree: [], myCaps: [], theirCaps: [], theirFree: [] };
+    M.legalMoves(b, 0).forEach(function (m) {
+      var r = M.play(b, 0, m);
+      if (r.landedInStore) s.myFree.push(m);
+      if (r.captured) s.myCaps.push({ from: m, land: r.last, n: r.captured });
+    });
+    M.legalMoves(b, 1).forEach(function (m) {
+      var r = M.play(b, 1, m);
+      if (r.landedInStore) s.theirFree.push(m);
+      if (r.captured) s.theirCaps.push({ from: m, land: r.last, target: 12 - r.last, n: r.captured });
+    });
+    return s;
+  }
+  function countNote(b, m) {
+    return b[m] === dist(m) ? b[m] + (b[m] === 1 ? ' stone, ' : ' stones, ') + dist(m) + (dist(m) === 1 ? ' step' : ' steps')
+      : b[m] + ' stones: a full lap plus ' + dist(m);
+  }
+  function phaseOf(b) {
+    var n = M.sideCount(b, 0) + M.sideCount(b, 1);
+    return n >= 34 ? 'Opening' : n <= 16 ? 'Endgame' : 'Middlegame';
+  }
+  var PHASE_TIP = {
+    Opening: 'tempo matters most: bank free turns and watch what counts your sowing creates on their side.',
+    Middlegame: 'captures decide it: know your empty pits (weapons) and your big piles (targets).',
+    Endgame: 'count everything: store plus stones at home, and who runs out of moves first.'
+  };
+  function phaseLine(b) {
+    var ph = phaseOf(b), need = 25 - b[6];
+    return '<p><b>' + ph + '</b> · ' + (M.sideCount(b, 0) + M.sideCount(b, 1)) + ' stones still in play · stores ' +
+      b[6] + '–' + b[13] + (need > 0 ? ' (you need ' + need + ' more to reach 25)' : '') + '. In this phase ' + PHASE_TIP[ph] + '</p>';
+  }
+  function scanHtml(b) {
+    var s = scan(b);
+    function list(arr, fn, none) { return arr.length ? arr.map(fn).join('; ') + '.' : none; }
+    return '<ol class="scan">' +
+      '<li><b>Your free turns:</b> ' + list(s.myFree, function (m) { return 'pit ' + pitName(m) + ' (' + countNote(b, m) + ')'; },
+        'none. No pit’s count matches its distance to your store.') + '</li>' +
+      '<li><b>Your captures:</b> ' + list(s.myCaps, function (c) {
+        if (c.from === c.land) return 'pit ' + pitName(c.from) + ' (' + b[c.from] + ' stones) goes all the way round, lands back in itself and takes ' + c.n;
+        return 'pit ' + pitName(c.from) + ' ends in your empty pit ' + pitName(c.land) + ' and takes ' + c.n;
+      }, 'none. No move of yours ends in an empty pit of yours with stones above it.') + '</li>' +
+      '<li><b>Their captures if you ignore them:</b> ' + list(s.theirCaps, function (c) {
+        return 'their ' + pitName(c.from) + ' ends in their empty ' + pitName(c.land) + ' and takes your pit ' + pitName(c.target) + ' (' + c.n + ' in all)';
+      }, 'none right now.') + '</li>' +
+      '<li><b>Their free turns:</b> ' + list(s.theirFree, function (m) { return 'their ' + pitName(m) + ' (' + countNote(b, m) + ')'; },
+        'none right now.') + '</li></ol>';
+  }
+
+  /* ---------- concrete lines: what actually happens after a move ---------- */
+  async function bestTurn(board, player, first) {
+    var moves = [], r = null, pit = first;
+    for (var guard = 0; guard < 30; guard++) {
+      if (pit == null) pit = (await engine.analyze(board, player, { timeMs: 220 })).moves[0].move;
+      r = M.play(board, player, pit);
+      moves.push({ pit: pit, captured: r.captured, extra: r.extra });
+      board = r.board; pit = null;
+      if (!r.extra) break;
+    }
+    return { player: player, moves: moves, board: board, over: r.over };
+  }
+  async function exchange(board, first) {
+    var you = await bestTurn(board, 0, first);
+    var them = you.over ? null : await bestTurn(you.board, 1);
+    return { you: you, them: them, board: them ? them.board : you.board, over: them ? them.over : true };
+  }
+  function turnText(t) {
+    return t.moves.map(function (m) {
+      return pitName(m.pit) + (m.captured ? ' (captures ' + m.captured + ')' : m.extra ? ' (free turn)' : '');
+    }).join(', then ');
+  }
+  function storesAfter(x) {
+    return (x.over ? 'Final score ' : 'Stores after that: ') + 'you ' + x.board[6] + ', them ' + x.board[13] + '.';
+  }
+  /* What the position holds for you once an exchange is over (you are to move again). */
+  function nextNote(x) {
+    if (x.over) return '';
+    var s = scan(x.board), mine = [], cap = null, th = null;
+    s.myCaps.forEach(function (c) { if (!cap || c.n > cap.n) cap = c; });
+    s.theirCaps.forEach(function (c) { if (!th || c.n > th.n) th = c; });
+    if (s.myFree.length) mine.push('a free turn at pit ' + pitName(s.myFree[s.myFree.length - 1]));
+    if (cap) mine.push('a capture of ' + cap.n + ' with pit ' + pitName(cap.from));
+    return ' On your next turn you have ' + (mine.length ? mine.join(' and ') : 'nothing forcing') + '; ' +
+      (th ? 'they are threatening your pit ' + pitName(th.target) + ' (' + th.n + ').' : 'they have no capture lined up.');
+  }
+  function missedText(b, a, pit) {
+    var f = features(b, a.moves[0].move), fp = features(b, pit);
+    if (f.r.extra) return fp.r.extra ? 'A free turn was right, but there was a better one to take first.' : 'You passed up a free turn.';
+    if (f.r.captured) return fp.r.captured ? 'There was a better capture than that one.' : 'You missed a capture.';
+    var before = bestCapture(b, 1);
+    if (before && before.n >= 3 && (!f.threat || f.threat.n < before.n)) return 'One of your pits was under threat, and this didn’t deal with it.';
+    return 'Nothing flashy was on, but a calmer move would have left them much less to hit.';
+  }
+  var FORECAST_NOTE = 'That figure is the engine’s forecast of the final score with both sides playing their best. ' +
+    'It comes from looking many moves ahead, not from averaging random games.';
+
   /* =====================================================================
    * PLAY
    * ===================================================================== */
@@ -287,7 +387,8 @@
     G.shown = entry;
     var gr = entry.grade;
     setCoach('<div class="grade g-' + gr.g + '"><span class="badge">' + GRADES[gr.g] + '</span>' +
-      '<span class="muted">move ' + entry.n + (entry.hint ? ' · hint used' : '') + '</span></div><p>' + esc(gr.text) + '</p>');
+      '<span class="muted">move ' + entry.n + (entry.hint ? ' · hint used' : '') + '</span></div><p>' + esc(gr.text) + '</p>' +
+      (gr.loss >= 1 ? '<p class="muted small">“Cost” is how much worse the engine expects the final score to be, with best play from both sides.</p>' : ''));
     renderLog();
   }
 
@@ -481,13 +582,15 @@
     var t = token, board = G.board, a = await G.analysis;
     if (t !== token || G.board !== board || G.busy) return;
     G.hintLevel++;
+    var badge = '<div class="grade"><span class="badge hintb">Hint</span></div>';
     if (G.hintLevel === 1) {
-      setCoach('<div class="grade"><span class="badge hintb">Hint</span></div><p>' + esc(hintText(board, a)) +
-        '</p><p class="muted">Press Hint again to see the move.</p>');
+      setCoach(badge + '<p>' + esc(hintText(board, a)) + '</p><p class="muted">Press Hint again for the full board read.</p>');
+    } else if (G.hintLevel === 2) {
+      setCoach(badge + '<p>Run the four checks, in this order:</p>' + scanHtml(board) + phaseLine(board) +
+        '<p class="muted">Press Hint once more to see the move.</p>');
     } else {
       G.hintPit = a.moves[0].move;
-      setCoach('<div class="grade"><span class="badge hintb">Hint</span></div><p>The engine likes pit <b>' +
-        pitName(G.hintPit) + '</b>. Before you play it, work out why.</p>');
+      setCoach(badge + '<p>The engine likes pit <b>' + pitName(G.hintPit) + '</b>. Before you play it, work out why.</p>');
       renderPlay();
     }
   });
@@ -502,10 +605,11 @@
   Drill.prototype.load = function (def) {
     this.tok++;
     this.def = def; this.board = def.board.slice(); this.idx = 0;
-    this.busy = false; this.solved = false; this.firstTry = true; this.hintPit = -1;
+    this.busy = false; this.solved = false; this.firstTry = true; this.hintPit = -1; this.waiting = false;
     this.begin();
   };
   Drill.prototype.begin = function () {
+    this.hintLevel = 0;
     this.analysis = this.def.live ? engine.analyze(this.board, 0, { timeMs: 500 }) : null;
     this.render();
   };
@@ -532,10 +636,17 @@
       else { this.solved = true; this.render(); this.hooks.onSolved(this); }
     } else {
       this.firstTry = false;
-      this.hooks.onWrong(this, pit, a, step, before);
+      // A hook may return true to keep the refuted position up until retry() is called.
+      var hold = await this.hooks.onWrong(this, pit, a, step, before);
+      if (t !== this.tok) return;
+      if (hold) { this.waiting = true; return; }
       await sleep(1300); if (t !== this.tok) return;
       this.busy = false; this.render();
     }
+  };
+  Drill.prototype.retry = function () {
+    if (!this.waiting) return;
+    this.waiting = false; this.busy = false; this.render();
   };
   Drill.prototype.showAnswer = async function () {
     if (this.solved || this.busy) return false;
@@ -552,32 +663,75 @@
    * ===================================================================== */
   var PUZZLES = window.PUZZLES || [];
   var THEMES = {
-    free: ['Free turn', 'There’s a free turn here. Count stones against distance to your store.'],
-    capture: ['Capture', 'There’s a capture. Look at your empty pits and what sits across from them.'],
-    combo: ['Combination', 'Take a free turn first, then something bigger.'],
-    defend: ['Defence', 'You’re under threat. Work out what they are about to capture.'],
-    quiet: ['Quiet move', 'No fireworks. Find the move that spoils their best idea.']
+    free: ['Free turn', 'Check free turns first, every turn. They cost nothing, and you get to scan the new position afterwards.'],
+    capture: ['Capture', 'Your empty pits are weapons. For each one, look at what sits above it and ask which of your pits ends there.'],
+    combo: ['Combination', 'A free turn changes the board. Rerun the scan after each one: the capture often only shows up on the second look.'],
+    defend: ['Defence', 'Run the scan from their seat too. Finding their capture before they play it is worth as much as making one.'],
+    quiet: ['Quiet move', 'When nothing is forcing, compare what each move leaves them: a free turn, a capture, or nothing.']
   };
   var pIdx = 0;
+  var PUZZLE_INTRO = 'One move here is clearly better than the rest. Before you click, run the scan: your free turns, your captures, their captures, their free turns.';
   var puzzleDrill = new Drill(null, {
-    onStep: function () { $('puzzle-msg').innerHTML = '<b class="ok">Right.</b> You have a free turn — finish the job.'; },
-    onWrong: function (d, pit, a) {
-      var txt = 'Pit ' + pitName(pit) + ' isn’t the one.';
-      if (a) {
-        var mine = null; a.moves.forEach(function (m) { if (m.move === pit) mine = m; });
-        var loss = (a.moves[0].score - mine.score) / U;
-        if (loss >= 0.5) txt += ' It comes out about ' + stones(loss) + ' worse than the best move.';
-      }
-      $('puzzle-msg').innerHTML = '<b class="bad">Not quite.</b> ' + esc(txt) + ' Have another go.';
+    onStep: function () {
+      $('puzzle-msg').innerHTML = '<b class="ok">Right.</b> You move again. The board has changed, so scan it again before you pick. ' +
+        '<span class="muted">Hint works for this move too.</span>';
     },
-    onSolved: function (d) {
-      var P = PUZZLES[pIdx], f = features(P.b, P.sol);
+    onWrong: async function (d, pit, a, step, before) {
+      var t = d.tok, msg = $('puzzle-msg'), alive = function () { return t === d.tok; };
+      var r = M.play(before, 0, pit), fp = features(before, pit);
+      msg.innerHTML = '<b class="bad">Not the best.</b> Watch what happens next…';
+      // Finish your turn as well as it can be finished, then let them reply.
+      var you = (r.extra && !r.over) ? await bestTurn(r.board, 0) : null;
+      if (!alive()) return true;
+      var afterYou = you ? you.board : r.board, over = you ? you.over : r.over;
+      var them = over ? null : await bestTurn(afterYou, 1);
+      if (!alive()) return true;
+      var seq = (you ? you.moves.map(function (m) { return [0, m.pit]; }) : [])
+        .concat(them ? them.moves.map(function (m) { return [1, m.pit]; }) : []);
+      var cur = r.board;
+      await sleep(500); if (!alive()) return true;
+      for (var i = 0; i < seq.length; i++) {
+        var res = await d.view.animate(cur, seq[i][0], seq[i][1], alive);
+        if (!res) return true;
+        cur = res.board;
+        await sleep(300); if (!alive()) return true;
+      }
+      var mine = null; a.moves.forEach(function (m) { if (m.move === pit) mine = m; });
+      var loss = (a.moves[0].score - mine.score) / U;
+      var html = '<b class="bad">Not the best.</b> Pit ' + pitName(pit) + ' ' + esc(didWhat(fp)) + '.';
+      if (you) html += ' Even finishing the turn well (' + esc(turnText(you)) + ')';
+      if (them) html += (you ? ', they answer ' : ' They answer ') + '<b>' + esc(turnText(them)) + '</b>.';
+      else if (you) html += ', the game ends there.';
+      html += ' ' + (them ? storesAfter({ board: cur, over: them.over }) : storesAfter({ board: cur, over: true }));
+      html += '<p><b>What went wrong:</b> ' + esc(missedText(before, a, pit)) +
+        (loss >= 0.5 ? ' With best play from here the engine expects you to finish about ' + stones(loss) + ' worse than you could have.' : '') + '</p>' +
+        '<p><button type="button" class="btn primary" data-act="retry">Try again</button> ' +
+        '<span class="muted">The board above shows the position after their reply.</span></p>';
+      msg.innerHTML = html;
+      return true;
+    },
+    onSolved: async function (d) {
+      var t = d.tok, P = PUZZLES[pIdx], msg = $('puzzle-msg');
       if (saved.puzzles[P.id] !== 'ok') { saved.puzzles[P.id] = d.firstTry ? 'ok' : 'help'; save(); }
-      $('puzzle-msg').innerHTML = '<b class="ok">' + (d.firstTry ? 'Solved first try.' : 'Solved.') + '</b> ' +
-        '<span class="tag">' + THEMES[P.theme][0] + '</span> Pit ' + pitName(P.sol) + ' ' + esc(didWhat(f)) +
-        (P.theme === 'defend' ? ' that took the sting out of their capture threat' : '') +
-        '. Every other first move ends up at least ' + stones(P.gap) + ' worse.';
       renderPuzzleChrome();
+      var headHtml = '<b class="ok">' + (d.firstTry ? 'Solved first try.' : 'Solved.') + '</b> <span class="tag">' + THEMES[P.theme][0] + '</span>';
+      msg.innerHTML = headHtml + ' <span class="muted">Writing up why it works…</span>';
+      var a = await engine.analyze(P.b, 0, { timeMs: 400 });
+      var best = await exchange(P.b, P.sol);
+      var alt = a.moves.filter(function (m) { return m.move !== P.sol; })[0];
+      var other = alt ? await exchange(P.b, alt.move) : null;
+      if (t !== d.tok) return;
+      function lineHtml(label, x) {
+        return '<li><b>' + label + '</b> you play ' + esc(turnText(x.you)) +
+          (x.them ? '; they answer ' + esc(turnText(x.them)) : '') + '. ' + storesAfter(x) + esc(nextNote(x)) + '</li>';
+      }
+      msg.innerHTML = headHtml +
+        '<div class="why"><h3>How to see it (the starting position)</h3>' + phaseLine(P.b) + scanHtml(P.b) +
+        '<h3>What happens</h3><ul>' + lineHtml('Best:', best) +
+        (other ? lineHtml('Next-best try, pit ' + pitName(alt.move) + ':', other) : '') + '</ul>' +
+        '<p>One exchange doesn’t always show the whole gap; what each line leaves on the board matters as much as the stores. '
+        + 'Looking further ahead, every other first move finishes at least ' + stones(P.gap) + ' worse. <span class="muted">' + FORECAST_NOTE + '</span></p>' +
+        '<p><b>Takeaway:</b> ' + THEMES[P.theme][1] + '</p></div>';
     }
   });
   puzzleDrill.view = new BoardView($('puzzle-board'), function (p) { puzzleDrill.click(p); }, ['You', 'Them']);
@@ -587,7 +741,7 @@
     pIdx = (i + PUZZLES.length) % PUZZLES.length;
     var P = PUZZLES[pIdx];
     puzzleDrill.load({ board: P.b, steps: [{ ok: [P.sol] }], live: true });
-    $('puzzle-msg').innerHTML = 'One move here is clearly better than the rest. Click the pit you would play.';
+    $('puzzle-msg').innerHTML = PUZZLE_INTRO;
     renderPuzzleChrome();
   }
   function renderPuzzleChrome() {
@@ -604,17 +758,131 @@
     var b = ev.target.closest('.chip');
     if (b) loadPuzzle(+b.dataset.i);
   });
+  $('puzzle-msg').addEventListener('click', function (ev) {
+    if (ev.target.closest('[data-act="retry"]')) { puzzleDrill.retry(); $('puzzle-msg').innerHTML = PUZZLE_INTRO; }
+  });
   $('puzzle-prev').addEventListener('click', function () { loadPuzzle(pIdx - 1); });
   $('puzzle-next').addEventListener('click', function () { loadPuzzle(pIdx + 1); });
-  $('puzzle-hint').addEventListener('click', function () {
-    if (puzzleDrill.solved) return;
-    $('puzzle-msg').innerHTML = '<span class="tag">' + THEMES[PUZZLES[pIdx].theme][0] + '</span> ' + THEMES[PUZZLES[pIdx].theme][1];
+  $('puzzle-hint').addEventListener('click', async function () {
+    var d = puzzleDrill;
+    if (d.solved) return;
+    d.retry();
+    if (d.busy) return;
+    var t = d.tok, board = d.board, a = await d.analysis;
+    if (t !== d.tok || d.board !== board || d.busy) return;
+    d.hintLevel++;
+    if (d.hintLevel === 1) {
+      $('puzzle-msg').innerHTML = '<span class="tag">Hint</span> ' + esc(hintText(board, a)) +
+        ' <span class="muted">Press Hint again for the full board read.</span>';
+    } else {
+      d.firstTry = false;
+      $('puzzle-msg').innerHTML = '<span class="tag">Board read</span> The four checks, in order, for the position in front of you:' +
+        scanHtml(board) + phaseLine(board) + '<p class="muted">Now choose. Show answer is there if you’re still stuck.</p>';
+    }
   });
   $('puzzle-show').addEventListener('click', function () {
+    puzzleDrill.retry();
     puzzleDrill.showAnswer().then(function (shown) {
-      if (shown) $('puzzle-msg').innerHTML = 'The answer is highlighted. Play it and see what it does.';
+      if (shown) $('puzzle-msg').innerHTML = 'The answer is highlighted. Play it, then read the write-up of why it works.';
     });
   });
+
+  /* =====================================================================
+   * SCAN DRILL (Think tab): train the perception, not the calculation
+   * ===================================================================== */
+  var SCAN_Q = {
+    free: 'Click every pit of yours that earns a <b>free turn</b>.',
+    cap: 'Click every pit of yours that makes a <b>capture</b> if you play it.',
+    threat: 'Click every pit of yours that they could <b>capture on their next turn</b> if you left things as they are.'
+  };
+  var SD = null;
+  var scanView = new BoardView($('scan-board'), function (pit) {
+    if (!SD || SD.checked) return;
+    var k = SD.sel.indexOf(pit);
+    if (k >= 0) SD.sel.splice(k, 1); else SD.sel.push(pit);
+    renderScan();
+  }, ['You', 'Them']);
+  function randomPosition() {
+    for (;;) {
+      var b = M.newBoard(), p = 0, plies = 6 + Math.floor(Math.random() * 26), over = false;
+      for (var i = 0; i < plies && !over; i++) {
+        var lm = M.legalMoves(b, p), r = M.play(b, p, lm[Math.floor(Math.random() * lm.length)]);
+        b = r.board; p = r.next; over = r.over;
+      }
+      if (over) continue;
+      return p === 0 ? b : b.map(function (_, j) { return b[(j + 7) % 14]; });
+    }
+  }
+  function scanAnswer(b, key) {
+    var s = scan(b), out = [];
+    if (key === 'free') return s.myFree;
+    (key === 'cap' ? s.myCaps.map(function (c) { return c.from; }) : s.theirCaps.map(function (c) { return c.target; }))
+      .forEach(function (x) { if (out.indexOf(x) < 0) out.push(x); });
+    return out;
+  }
+  function scanExplain(b, key, pit, isAnswer) {
+    var r = M.play(b, 0, pit), name = 'Pit ' + pitName(pit) + ': ';
+    if (key === 'free') {
+      return name + (isAnswer ? countNote(b, pit) + ', so the last stone drops in your store.'
+        : b[pit] + (b[pit] === 1 ? ' stone' : ' stones') + ' but ' + dist(pit) + (dist(pit) === 1 ? ' step' : ' steps') + ' to the store. It ends on ' + where(r.last) + '.');
+    }
+    if (key === 'cap') {
+      if (isAnswer) return name + 'ends on your empty pit ' + pitName(r.last) + ' and takes ' + r.captured + ' (' + (r.captured - 1) + ' from their ' + pitName(12 - r.last) + ').';
+      if (r.last < 6 && b[r.last] === 0 && r.last !== pit && r.path.indexOf(r.last) === r.path.length - 1) return name + 'ends on your empty pit ' + pitName(r.last) + ', but nothing sits above it.';
+      if (r.last < 6) return name + 'ends on ' + where(r.last) + ', which isn’t empty.';
+      return name + 'ends on ' + where(r.last) + ', not on your side.';
+    }
+    if (isAnswer) {
+      var c = scan(b).theirCaps.filter(function (x) { return x.target === pit; })[0];
+      return name + 'their ' + pitName(c.from) + ' (' + b[c.from] + ') ends on their empty ' + pitName(c.land) + ', directly above it. ' + c.n + ' stones gone.';
+    }
+    return name + (b[12 - pit] > 0 ? 'their ' + pitName(12 - pit) + ' above it isn’t empty, so nothing can capture here yet.'
+      : 'their ' + pitName(12 - pit) + ' above it is empty, but none of their pits ends there this turn.');
+  }
+  function newScan() {
+    var keys = ['free', 'cap', 'threat'], b, key, ans;
+    for (var tries = 0; tries < 80; tries++) {
+      b = randomPosition(); key = keys[Math.floor(Math.random() * 3)]; ans = scanAnswer(b, key);
+      if (ans.length || Math.random() < 0.08) break;
+    }
+    SD = { b: b, key: key, ans: ans, sel: [], checked: false };
+    $('scan-msg').innerHTML = '<span class="muted">Select pits on the bottom row, then press Check. If you think there are none, press Check with nothing selected.</span>';
+    renderScan();
+  }
+  function renderScan() {
+    var marks = {}, st = saved.scan || { streak: 0, best: 0 };
+    for (var i = 0; i < 6; i++) {
+      var sel = SD.sel.indexOf(i) >= 0, ans = SD.ans.indexOf(i) >= 0;
+      if (!SD.checked) { if (sel) marks[i] = 'sel'; }
+      else if (sel && ans) marks[i] = 'right';
+      else if (sel) marks[i] = 'wrong';
+      else if (ans) marks[i] = 'missed';
+    }
+    scanView.render(SD.b, { clickable: SD.checked ? [] : M.legalMoves(SD.b, 0), marks: marks });
+    $('scan-status').innerHTML = SCAN_Q[SD.key];
+    $('scan-streak').textContent = 'Streak ' + st.streak + ' · best ' + st.best;
+    $('scan-check').disabled = SD.checked;
+  }
+  $('scan-check').addEventListener('click', function () {
+    if (!SD || SD.checked) return;
+    SD.checked = true;
+    var st = saved.scan || (saved.scan = { streak: 0, best: 0 });
+    var missed = SD.ans.filter(function (x) { return SD.sel.indexOf(x) < 0; });
+    var extra = SD.sel.filter(function (x) { return SD.ans.indexOf(x) < 0; });
+    var ok = !missed.length && !extra.length;
+    st.streak = ok ? st.streak + 1 : 0; st.best = Math.max(st.best, st.streak); save();
+    var pits = SD.ans.concat(extra).sort(function (x, y) { return x - y; });
+    var html = ok ? '<b class="ok">Exactly right.</b>' :
+      '<b class="bad">Not quite.</b> ' + [missed.length ? missed.length + ' missed (amber)' : '', extra.length ? extra.length + (extra.length === 1 ? ' that doesn’t work (red)' : ' that don’t work (red)') : '']
+        .filter(Boolean).join(', ') + '.';
+    if (!SD.ans.length) html += ' There were none in this position.';
+    html += '<ul class="scan">' + pits.map(function (p) {
+      return '<li>' + esc(scanExplain(SD.b, SD.key, p, SD.ans.indexOf(p) >= 0)) + '</li>';
+    }).join('') + '</ul>';
+    $('scan-msg').innerHTML = html;
+    renderScan();
+  });
+  $('scan-next').addEventListener('click', newScan);
 
   /* =====================================================================
    * LESSONS
@@ -663,7 +931,7 @@
   });
 
   /* ---------- tabs ---------- */
-  var TABS = ['play', 'puzzles', 'learn'];
+  var TABS = ['play', 'puzzles', 'learn', 'think'];
   function showTab(name) {
     if (TABS.indexOf(name) < 0) name = 'play';
     TABS.forEach(function (t) { $('tab-' + t).hidden = t !== name; });
@@ -681,6 +949,7 @@
   for (var pi = 0; pi < PUZZLES.length; pi++) if (!saved.puzzles[PUZZLES[pi].id]) { firstUnsolved = pi; break; }
   var firstLesson = 0;
   for (var li = 0; li < LESSONS.length; li++) if (!saved.lessons[LESSONS[li].id]) { firstLesson = li; break; }
+  newScan();
   loadPuzzle(firstUnsolved);
   loadLesson(firstLesson);
   newGame();

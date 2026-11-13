@@ -53,9 +53,9 @@ p { margin: .5rem 0; }
 .logo {
   width: 1.4rem; height: 1.4rem; border-radius: 35%;
   background:
-    radial-gradient(circle at 32% 36%, #e9c46a 0 22%, transparent 24%),
-    radial-gradient(circle at 68% 36%, #4fc3b5 0 22%, transparent 24%),
-    radial-gradient(circle at 50% 70%, #e76f51 0 22%, transparent 24%),
+    radial-gradient(circle at 32% 36%, #ffc800 0 22%, transparent 24%),
+    radial-gradient(circle at 68% 36%, #28dc46 0 22%, transparent 24%),
+    radial-gradient(circle at 50% 70%, #ff1e3c 0 22%, transparent 24%),
     var(--wood-2);
 }
 .tabs { display: flex; gap: .25rem; background: var(--line); padding: .2rem; border-radius: 999px; }
@@ -131,13 +131,28 @@ select, .btn {
   font-size: clamp(10px, 2.3vw, 14px); line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums;
 }
 .stones { position: absolute; inset: 0; display: block; pointer-events: none; }
+/* Glass gems: translucent body, a hard specular highlight top-left, and light
+   pooling on the far side the way it does in a real glass pebble. */
 .st {
-  position: absolute; width: 24%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%);
-  box-shadow: 0 1px 2px rgba(0,0,0,.5), inset 0 -2px 3px rgba(0,0,0,.25), inset 0 2px 2px rgba(255,255,255,.45);
+  --c: 255, 36, 66; --d: 140, 0, 28; --a1: .58; --a2: .9;
+  position: absolute; width: 29%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%);
+  background:
+    radial-gradient(ellipse 34% 22% at 33% 22%, rgba(255,255,255,.98) 0 35%, rgba(255,255,255,0) 100%),
+    radial-gradient(circle at 24% 40%, rgba(255,255,255,.35), rgba(255,255,255,0) 22%),
+    radial-gradient(circle at 66% 76%, rgba(255,255,255,.6), rgba(255,255,255,0) 40%),
+    radial-gradient(circle at 50% 45%, rgba(var(--c), var(--a1)) 0%, rgba(var(--c), var(--a2)) 58%, rgba(var(--d), .97) 100%);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,.55),
+    0 0 7px rgba(var(--c), .5),
+    inset 0 0 0 1px rgba(255,255,255,.25),
+    inset 0 -3px 5px rgba(var(--d), .75);
 }
-.well .st { width: 30%; }
-.c0 { background: #e9c46a; } .c1 { background: #4fc3b5; } .c2 { background: #e76f51; }
-.c3 { background: #8ab6f0; } .c4 { background: #f1e9da; }
+.well .st { width: 34%; }
+.c0 { --c: 255, 30, 60; --d: 140, 0, 28; }      /* cherry */
+.c1 { --c: 40, 220, 70; --d: 0, 105, 40; }      /* lime */
+.c2 { --c: 30, 125, 255; --d: 8, 45, 170; }     /* blueberry */
+.c3 { --c: 255, 200, 0; --d: 200, 105, 0; }     /* lemon drop */
+.c4 { --c: 235, 246, 255; --d: 150, 180, 205; --a1: .1; --a2: .38; } /* clear */
 
 .clickable .pit { cursor: pointer; box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 2px rgba(255,255,255,.55); }
 .clickable .pit:hover { box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 4px #fff; }
@@ -203,3 +218,14 @@ select, .btn {
 .lesson h2 { font-size: 1.15rem; }
 .checklist { margin: 0; padding-left: 1.25rem; }
 .checklist li { margin: .3rem 0; }
+
+/* ---------- scan drill marks, explanations ---------- */
+[data-mark="sel"] .pit { box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 5px #fff; }
+[data-mark="right"] .pit { box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 5px #3fe0a0; }
+[data-mark="wrong"] .pit { box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 5px #ff5a4a; }
+[data-mark="missed"] .pit { box-shadow: inset 0 4px 8px rgba(0,0,0,.55), 0 0 0 5px #ffc233; }
+h3 { font-size: .95rem; margin: 1rem 0 .3rem; }
+.why h3:first-child { margin-top: .75rem; }
+.why ul, ul.scan, ol.scan, ul.checklist { margin: .4rem 0; padding-left: 1.25rem; }
+.scan li, .why li { margin: .3rem 0; }
+.small { font-size: .85rem; }
