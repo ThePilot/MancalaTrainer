@@ -13,6 +13,12 @@ server, no dependencies: open `index.html` or host the folder anywhere static
   that lets you replay from your costliest move.
 - **Puzzles** – positions taken from engine self-play where exactly one move
   is clearly best: free turns, captures, combinations, defence and quiet moves.
+  A wrong move is played out on the board with the opponent's best reply; a
+  solved puzzle gets a write-up (board read, best line vs next-best line,
+  takeaway). Hints work on every move of a combination.
+- **Think** – the four-question scan to run every turn, a scan drill on random
+  positions (spot the free turns, captures and threats), counting shortcuts,
+  what matters in each phase of the game, and what the engine's numbers mean.
 - **Learn** – seven short interactive lessons (rules, free turns, chaining,
   captures, defence, the opening, the endgame) and an every-turn checklist.
 
